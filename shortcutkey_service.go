@@ -91,7 +91,7 @@ func openSnippingTool() {
 	// Snipping Toolを起動する
 	// NOTE: Windows 11 では動作チェックをした
 	// TODO: snippingtool 以外のアプリも起動できるようにしたい
-	if err := exec.Command("cmd", "/c", "snippingtool.exe").Start(); err != nil {
+	if err := exec.Command("snippingtool.exe").Start(); err != nil {
 		log.Printf("Snipping Toolの起動に失敗しました: %v", err)
 	}
 }
