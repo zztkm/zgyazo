@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	defaultBaseEndpoint   = "https://api.gyazo.com"
 	defaultUploadEndpoint = "https://upload.gyazo.com"
 )
 
@@ -39,9 +38,6 @@ type uploadResponse struct {
 
 type gyazoClient struct {
 	client *http.Client
-
-	// Gyazo Base API endpoint
-	baseEndpoint string
 
 	// Upload API endpoint
 	uploadEndpoint string
@@ -66,7 +62,6 @@ func newGyazoApiClient(token string, snippingToolSavePath string) (*gyazoClient,
 
 	return &gyazoClient{
 		client:               oauthClient,
-		baseEndpoint:         defaultBaseEndpoint,
 		uploadEndpoint:       defaultUploadEndpoint,
 		snippingToolSavePath: snippingToolSavePath,
 	}, nil
