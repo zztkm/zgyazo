@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -10,6 +11,32 @@ import (
 func getConfigFilePath() string {
 	// Windows では %APPDATA%/zgyazo/config.json
 	return filepath.Join(os.Getenv("APPDATA"), "zgyazo", "config.json")
+}
+
+func getLogFilePath() string {
+	// config.json と同じディレクトリにログファイルを配置
+	return filepath.Join(os.Getenv("APPDATA"), "zgyazo", "zgyazo.log")
+}
+
+func setupLogger() error {
+	logPath := getLogFilePath()
+
+	// ログディレクトリが存在しない場合は作成
+	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
+		return err
+	}
+
+	// ログファイルを開く（追記モード）
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return err
+	}
+
+	// ログの出力先をファイルと標準出力の両方に設定
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+	log.SetOutput(multiWriter)
+
+	return nil
 }
 
 type zgyazoConfig struct {
@@ -35,6 +62,11 @@ func loadConfig(path string) (*zgyazoConfig, error) {
 }
 
 func main() {
+	// ログの設定を最初に行う
+	if err := setupLogger(); err != nil {
+		log.Fatalf("Failed to setup logger: %v", err)
+	}
+
 	config_path := getConfigFilePath()
 	if _, err := os.Stat(config_path); os.IsNotExist(err) {
 		// config.json が存在しない場合は作成する
