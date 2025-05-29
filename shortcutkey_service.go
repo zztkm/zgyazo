@@ -1,9 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os/exec"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -31,20 +31,42 @@ var (
 	procRegisterHotKey   = user32.NewProc("RegisterHotKey")
 	procUnregisterHotKey = user32.NewProc("UnregisterHotKey")
 	procGetMessage       = user32.NewProc("GetMessageW")
+	procPeekMessage      = user32.NewProc("PeekMessageW")
+	procCreateWindowEx   = user32.NewProc("CreateWindowExW")
+	procDefWindowProc    = user32.NewProc("DefWindowProcW")
+	procRegisterClass    = user32.NewProc("RegisterClassW")
+)
+
+// kernel32.dll
+var (
+	kernel32            = windows.NewLazySystemDLL("kernel32.dll")
+	procGetModuleHandle = kernel32.NewProc("GetModuleHandleW")
+)
+
+// メッセージ処理用の定数
+const (
+	PM_REMOVE = 0x0001
+	WM_QUIT   = 0x0012
 )
 
 func runShortCutKeyService() {
 	// ホットキーID（プログラム内でユニークであれば何でも良い）
 	const hotkeyID = 1
 
+	// 専用のメッセージウィンドウを作成
+	hWnd := createMessageWindow()
+	if hWnd == 0 {
+		log.Fatalf("Failed to create message window")
+	}
+
 	// ホットキーを登録する
 	// RegisterHotKey(hWnd, id, fsModifiers, vk)
-	// hWnd:      nilでOK
+	// hWnd:      専用ウィンドウのハンドル
 	// id:        ホットキーのID
 	// fsModifiers: 修飾キーの組み合わせ (Ctrl + Shift)
 	// vk:          仮想キーコード (C)
 	ret, _, err := procRegisterHotKey.Call(
-		0,                     // hWnd
+		hWnd,                  // 専用ウィンドウのハンドル
 		uintptr(hotkeyID),     // id
 		MOD_CONTROL|MOD_SHIFT, // fsModifiers
 		VK_C,                  // vk
@@ -53,14 +75,69 @@ func runShortCutKeyService() {
 	if ret == 0 {
 		log.Fatalf("RegisterHotKey failed: %v", err)
 	}
-	fmt.Println("ホットキー(Ctrl + Shift + C)の監視を開始しました。")
-	fmt.Println("このウィンドウを閉じると監視は終了します。")
+	log.Println("ホットキー(Ctrl + Shift + C)の監視を開始しました。")
+	log.Println("このウィンドウを閉じると監視は終了します。")
 
 	// プログラム終了時にホットキーを解除する
-	defer procUnregisterHotKey.Call(0, uintptr(hotkeyID))
+	defer procUnregisterHotKey.Call(hWnd, uintptr(hotkeyID))
 
-	// メッセージループを開始してホットキーイベントを待機
-	// このループがプログラムを常駐させ、キー入力を待ち受けます。
+	// 改善されたメッセージループを開始
+	runImprovedMessageLoop(hWnd, hotkeyID)
+}
+
+// 専用のメッセージウィンドウを作成
+func createMessageWindow() uintptr {
+	// より簡単な方法：既存のウィンドウクラスを使用
+	className := windows.StringToUTF16Ptr("STATIC")
+	windowName := windows.StringToUTF16Ptr("ZgyazoMessageWindow")
+
+	hInstance, _, _ := procGetModuleHandle.Call(0)
+
+	// HWND_MESSAGE を使用してメッセージ専用ウィンドウを作成
+	const HWND_MESSAGE = ^uintptr(2) // -3 in uintptr
+	hWnd, _, err := procCreateWindowEx.Call(
+		0,                                   // dwExStyle
+		uintptr(unsafe.Pointer(className)),  // lpClassName (既存のSTATICクラスを使用)
+		uintptr(unsafe.Pointer(windowName)), // lpWindowName
+		0,                                   // dwStyle (非表示)
+		0, 0, 0, 0,                          // x, y, width, height
+		HWND_MESSAGE, // hWndParent (メッセージ専用ウィンドウ)
+		0,            // hMenu
+		hInstance,    // hInstance
+		0,            // lpParam
+	)
+
+	if hWnd == 0 {
+		log.Printf("CreateWindowEx failed: %v", err)
+		// フォールバック：通常の非表示ウィンドウを作成
+		log.Println("Trying fallback: creating normal hidden window...")
+		hWnd, _, err = procCreateWindowEx.Call(
+			0,                                   // dwExStyle
+			uintptr(unsafe.Pointer(className)),  // lpClassName
+			uintptr(unsafe.Pointer(windowName)), // lpWindowName
+			0,                                   // dwStyle (非表示)
+			uintptr(^uint32(999)),               // x (画面外の負の値)
+			uintptr(^uint32(999)),               // y (画面外の負の値)
+			1,                                   // width
+			1,                                   // height
+			0,                                   // hWndParent
+			0,                                   // hMenu
+			hInstance,                           // hInstance
+			0,                                   // lpParam
+		)
+
+		if hWnd == 0 {
+			log.Printf("Fallback CreateWindowEx also failed: %v", err)
+			return 0
+		}
+	}
+
+	log.Printf("Message window created successfully: hWnd = %x", hWnd)
+	return hWnd
+}
+
+// 改善されたメッセージループ
+func runImprovedMessageLoop(hWnd uintptr, hotkeyID int) {
 	var msg struct {
 		HWnd    uintptr
 		Message uint32
@@ -70,19 +147,57 @@ func runShortCutKeyService() {
 		Pt      struct{ X, Y int32 }
 	}
 
+	log.Println("ショートカットキーのためのメッセージループを開始します。")
+	log.Printf("監視対象ウィンドウ: hWnd = %x", hWnd)
+
+	// メッセージループの安定性を向上させるため、GetMessageとPeekMessageを組み合わせて使用
 	for {
-		// メッセージキューからメッセージを取得するまでブロック
-		ret, _, _ := procGetMessage.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
+		// まずGetMessageでブロッキング待機（効率的）
+		ret, _, _ := procGetMessage.Call(
+			uintptr(unsafe.Pointer(&msg)),
+			hWnd, // 特定のウィンドウのメッセージのみ処理
+			0,    // wMsgFilterMin
+			0,    // wMsgFilterMax
+		)
+
 		if ret == 0 {
-			log.Println("GetMessage returned 0, exiting...")
-			break // WM_QUITを受け取った場合など
+			// WM_QUITを受信
+			log.Println("WM_QUIT received, exiting...")
+			break
+		} else if ret == ^uintptr(0) { // -1 (エラー)
+			log.Println("GetMessage error, trying to continue...")
+			time.Sleep(100 * time.Millisecond)
+			continue
 		}
 
-		// 受け取ったメッセージがホットキーイベントか確認
+		// メッセージが存在する場合
+		log.Printf("Received message: %d, WParam: %d, from hWnd: %x\n", msg.Message, msg.WParam, msg.HWnd)
+
 		if msg.Message == WM_HOTKEY {
 			// どのホットキーが押されたかIDで確認
-			if msg.WParam == hotkeyID {
-				openSnippingTool()
+			if msg.WParam == uintptr(hotkeyID) {
+				log.Println("ホットキーが押されました。Snipping Toolを起動します。")
+				go openSnippingTool() // 非同期で実行してメッセージループをブロックしない
+			}
+		}
+
+		// 追加のメッセージがあるかPeekMessageで確認
+		for {
+			ret, _, _ := procPeekMessage.Call(
+				uintptr(unsafe.Pointer(&msg)),
+				hWnd,      // 特定のウィンドウのメッセージのみ処理
+				0,         // wMsgFilterMin
+				0,         // wMsgFilterMax
+				PM_REMOVE, // メッセージを削除
+			)
+
+			if ret == 0 {
+				// 追加メッセージなし
+				break
+			}
+
+			if msg.Message == WM_HOTKEY && msg.WParam == uintptr(hotkeyID) {
+				go openSnippingTool()
 			}
 		}
 	}
