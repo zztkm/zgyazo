@@ -74,6 +74,7 @@ func runShortCutKeyService() {
 		// メッセージキューからメッセージを取得するまでブロック
 		ret, _, _ := procGetMessage.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
 		if ret == 0 {
+			log.Println("GetMessage returned 0, exiting...")
 			break // WM_QUITを受け取った場合など
 		}
 

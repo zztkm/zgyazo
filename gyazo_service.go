@@ -89,7 +89,6 @@ func (c *gyazoClient) run() error {
 				url, err := c.uploadImage(event.Name)
 				if err != nil {
 					log.Printf("[ERROR] failed to upload image: %v\n", err)
-					return err
 				} else {
 					log.Printf("[INFO] uploaded image URL: %s\n", url)
 					if err := open(url); err != nil {
