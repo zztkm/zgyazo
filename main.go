@@ -8,23 +8,26 @@ import (
 	"path/filepath"
 )
 
+func getAppDataDir() string {
+	// Windows では %APPDATA%/zgyazo/
+	return filepath.Join(os.Getenv("APPDATA"), "zgyazo")
+}
+
+func ensureAppDataDir() error {
+	// AppDataディレクトリが存在しない場合は作成する
+	return os.MkdirAll(getAppDataDir(), 0755)
+}
+
 func getConfigFilePath() string {
-	// Windows では %APPDATA%/zgyazo/config.json
-	return filepath.Join(os.Getenv("APPDATA"), "zgyazo", "config.json")
+	return filepath.Join(getAppDataDir(), "config.json")
 }
 
 func getLogFilePath() string {
-	// config.json と同じディレクトリにログファイルを配置
-	return filepath.Join(os.Getenv("APPDATA"), "zgyazo", "zgyazo.log")
+	return filepath.Join(getAppDataDir(), "zgyazo.log")
 }
 
 func setupLogger() error {
 	logPath := getLogFilePath()
-
-	// ログディレクトリが存在しない場合は作成
-	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
-		return err
-	}
 
 	// ログファイルを開く（追記モード）
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
@@ -62,7 +65,12 @@ func loadConfig(path string) (*zgyazoConfig, error) {
 }
 
 func main() {
-	// ログの設定を最初に行う
+	// AppDataディレクトリを最初に作成
+	if err := ensureAppDataDir(); err != nil {
+		log.Fatalf("Failed to create config directory: %v", err)
+	}
+
+	// ログの設定を行う
 	if err := setupLogger(); err != nil {
 		log.Fatalf("Failed to setup logger: %v", err)
 	}
@@ -70,9 +78,6 @@ func main() {
 	config_path := getConfigFilePath()
 	if _, err := os.Stat(config_path); os.IsNotExist(err) {
 		// config.json が存在しない場合は作成する
-		if err := os.MkdirAll(filepath.Dir(config_path), 0755); err != nil {
-			log.Fatalf("Failed to create config directory: %v", err)
-		}
 		if _, err := os.Create(config_path); err != nil {
 			log.Fatalf("Failed to create config file: %v", err)
 		}
