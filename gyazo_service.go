@@ -21,6 +21,8 @@ const (
 	defaultUploadEndpoint = "https://upload.gyazo.com"
 )
 
+// uploadResponse は Gyazo にファイルをアップロードしたときのレスポンスを表現する構造体です
+// 例
 //	{
 //	  "image_id" : "8980c52421e452ac3355ca3e5cfe7a0c",
 //	  "permalink_url": "http://gyazo.com/8980c52421e452ac3355ca3e5cfe7a0c",
@@ -36,6 +38,7 @@ type uploadResponse struct {
 	Type         string `json:"type"`
 }
 
+// gyazoClient は Gyazo API を利用するさいのクライアント構造体です
 type gyazoClient struct {
 	client *http.Client
 
@@ -67,6 +70,9 @@ func newGyazoApiClient(token string, snippingToolSavePath string) (*gyazoClient,
 	}, nil
 }
 
+// run は gyazoClient を実行します
+// このメソッドは設定された snippingToolSavePath を監視し続けるため
+// 非同期で実行する必要があります
 func (c *gyazoClient) run() error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -74,7 +80,7 @@ func (c *gyazoClient) run() error {
 	}
 	defer watcher.Close()
 
-	watcher.Add("C:\\Users\\takum\\画像\\SnippingTool")
+	watcher.Add(c.snippingToolSavePath)
 
 	for {
 		select {
