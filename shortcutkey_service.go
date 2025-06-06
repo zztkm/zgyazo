@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"os/exec"
-	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -31,7 +30,6 @@ var (
 	procRegisterHotKey   = user32.NewProc("RegisterHotKey")
 	procUnregisterHotKey = user32.NewProc("UnregisterHotKey")
 	procGetMessage       = user32.NewProc("GetMessageW")
-	procPeekMessage      = user32.NewProc("PeekMessageW")
 	procCreateWindowEx   = user32.NewProc("CreateWindowExW")
 	procDefWindowProc    = user32.NewProc("DefWindowProcW")
 	procRegisterClass    = user32.NewProc("RegisterClassW")
@@ -45,8 +43,7 @@ var (
 
 // メッセージ処理用の定数
 const (
-	PM_REMOVE = 0x0001
-	WM_QUIT   = 0x0012
+	WM_QUIT = 0x0012
 )
 
 func runShortCutKeyService() {
@@ -66,10 +63,10 @@ func runShortCutKeyService() {
 	// fsModifiers: 修飾キーの組み合わせ (Ctrl + Shift)
 	// vk:          仮想キーコード (C)
 	ret, _, err := procRegisterHotKey.Call(
-		hWnd,                  // 専用ウィンドウのハンドル
-		uintptr(hotkeyID),     // id
-		MOD_CONTROL|MOD_SHIFT, // fsModifiers
-		VK_C,                  // vk
+		hWnd,                               // 専用ウィンドウのハンドル
+		uintptr(hotkeyID),                  // id
+		MOD_CONTROL|MOD_SHIFT|MOD_NOREPEAT, // fsModifiers (MOD_NOREPEATを追加)
+		VK_C,                               // vk
 	)
 	// retが0の場合は登録失敗
 	if ret == 0 {
@@ -150,27 +147,29 @@ func runImprovedMessageLoop(hWnd uintptr, hotkeyID int) {
 	log.Println("ショートカットキーのためのメッセージループを開始します。")
 	log.Printf("監視対象ウィンドウ: hWnd = %x", hWnd)
 
-	// メッセージループの安定性を向上させるため、GetMessageとPeekMessageを組み合わせて使用
+	// GetMessageを使用したメッセージループ
 	for {
-		// まずGetMessageでブロッキング待機（効率的）
-		ret, _, _ := procGetMessage.Call(
+		// GetMessageはメッセージが来るまでブロックする
+		// 戻り値: >0 = メッセージあり, 0 = WM_QUIT, -1 = エラー
+		ret, _, err := procGetMessage.Call(
 			uintptr(unsafe.Pointer(&msg)),
-			hWnd, // 特定のウィンドウのメッセージのみ処理
-			0,    // wMsgFilterMin
-			0,    // wMsgFilterMax
+			hWnd,  // このウィンドウのメッセージのみを取得
+			0,     // wMsgFilterMin
+			0,     // wMsgFilterMax
 		)
 
-		if ret == 0 {
-			// WM_QUITを受信
-			log.Println("WM_QUIT received, exiting...")
-			break
-		} else if ret == ^uintptr(0) { // -1 (エラー)
-			log.Println("GetMessage error, trying to continue...")
-			time.Sleep(100 * time.Millisecond)
+		// エラーチェック
+		if ret == uintptr(^uint32(0)) { // -1
+			log.Printf("[ERROR] GetMessage failed: %v", err)
 			continue
 		}
 
-		// メッセージが存在する場合
+		// WM_QUITメッセージを受信した場合
+		if ret == 0 {
+			log.Println("[INFO] WM_QUIT received, exiting message loop...")
+			break
+		}
+
 		log.Printf("Received message: %d, WParam: %d, from hWnd: %x\n", msg.Message, msg.WParam, msg.HWnd)
 
 		if msg.Message == WM_HOTKEY {
@@ -178,26 +177,6 @@ func runImprovedMessageLoop(hWnd uintptr, hotkeyID int) {
 			if msg.WParam == uintptr(hotkeyID) {
 				log.Println("ホットキーが押されました。Snipping Toolを起動します。")
 				go openSnippingTool() // 非同期で実行してメッセージループをブロックしない
-			}
-		}
-
-		// 追加のメッセージがあるかPeekMessageで確認
-		for {
-			ret, _, _ := procPeekMessage.Call(
-				uintptr(unsafe.Pointer(&msg)),
-				hWnd,      // 特定のウィンドウのメッセージのみ処理
-				0,         // wMsgFilterMin
-				0,         // wMsgFilterMax
-				PM_REMOVE, // メッセージを削除
-			)
-
-			if ret == 0 {
-				// 追加メッセージなし
-				break
-			}
-
-			if msg.Message == WM_HOTKEY && msg.WParam == uintptr(hotkeyID) {
-				go openSnippingTool()
 			}
 		}
 	}
