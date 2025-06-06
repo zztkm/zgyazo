@@ -1,15 +1,15 @@
 .PHONY: build
 build:
-	go build -ldflags="-H=windowsgui" -o zgyazo.exe
+	GOOS=windows go build -ldflags="-H=windowsgui" -o zgyazo.exe
 
 .PHONY: install
 install:
-	go install -ldflags="-H=windowsgui" .
+	GOOS=windows go install -ldflags="-H=windowsgui" .
 
 .PHONY: dist
 dist:
 	@mkdir -p dist
-	go build -trimpath -ldflags="-s -w -H=windowsgui" -o dist/zgyazo.exe
+	GOOS=windows go build -trimpath -ldflags="-s -w -H=windowsgui" -o dist/zgyazo.exe
 
 .PHONY: installer
 installer: dist

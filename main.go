@@ -282,6 +282,9 @@ func main() {
 		log.Printf("[INFO] Received signal: %v", sig)
 		log.Println("[INFO] Shutting down gracefully...")
 
+		// Gyazo client を停止
+		gyazoClient.stop()
+
 		// ログファイルを確実にフラッシュして閉じる
 		if err := logRotator.Sync(); err != nil {
 			log.Printf("[ERROR] Failed to sync log file: %v", err)
