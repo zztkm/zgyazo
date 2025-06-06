@@ -8,7 +8,7 @@ install:
 
 .PHONY: dist
 dist:
-	@mkdir -p dist
+	mkdir dist
 	go build -trimpath -ldflags="-s -w -H=windowsgui" -o dist/zgyazo.exe
 
 .PHONY: installer
@@ -25,5 +25,5 @@ release:
 
 .PHONY: clean
 clean:
-	@rm -rf dist
-	@rm -f zgyazo.exe
+	rm -rf dist
+	rm -f zgyazo.exe
