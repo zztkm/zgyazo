@@ -24,7 +24,7 @@ const (
 	uploadQueueSize       = 100
 	retryQueueSize        = 50
 	maxRetryCount         = 3
-	retryDelay            = 30 * time.Second
+	retryDelay            = 5 * time.Second
 )
 
 // uploadResponse は Gyazo にファイルをアップロードしたときのレスポンスを表現する構造体です
