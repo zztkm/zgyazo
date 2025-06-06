@@ -23,6 +23,7 @@ const (
 
 // uploadResponse は Gyazo にファイルをアップロードしたときのレスポンスを表現する構造体です
 // 例
+//
 //	{
 //	  "image_id" : "8980c52421e452ac3355ca3e5cfe7a0c",
 //	  "permalink_url": "http://gyazo.com/8980c52421e452ac3355ca3e5cfe7a0c",
