@@ -136,7 +136,7 @@ function Show-Summary {
     foreach ($output in $outputs) {
         if (Test-Path $output) {
             $size = (Get-Item $output).Length / 1MB
-            Write-Host "  - $(Split-Path -Leaf $output) ({0:N2} MB)" -f $size
+            Write-Host ("  - {0} ({1:N2} MB)" -f (Split-Path -Leaf $output), $size)
         }
     }
 }
