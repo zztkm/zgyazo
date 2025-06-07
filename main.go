@@ -227,63 +227,86 @@ func loadConfig(path string) (*zgyazoConfig, error) {
 }
 
 func main() {
+	log.Println("[DEBUG] main: Starting zgyazo application")
 	// AppDataディレクトリを最初に作成
+	log.Println("[DEBUG] main: Ensuring AppData directory exists")
 	if err := ensureAppDataDir(); err != nil {
 		log.Fatalf("Failed to create config directory: %v", err)
 	}
+	log.Printf("[DEBUG] main: AppData directory: %s", getAppDataDir())
 
 	// ログの設定を行う
+	log.Println("[DEBUG] main: Setting up logger")
 	logRotator, err := setupLogger()
 	if err != nil {
 		log.Fatalf("Failed to setup logger: %v", err)
 	}
+	log.Printf("[DEBUG] main: Logger setup complete, log file: %s", getLogFilePath())
 	defer func() {
 		logRotator.Sync()
 		logRotator.Close()
 	}()
 
 	// ログファイルを定期的にフラッシュする（5秒ごと）
+	log.Println("[DEBUG] main: Starting log flusher")
 	startLogFlusher(logRotator, 5*time.Second)
 
 	// シグナルハンドリングの設定
+	log.Println("[DEBUG] main: Setting up signal handling")
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	log.Println("[INFO] Starting zgyazo...")
 
 	config_path := getConfigFilePath()
+	log.Printf("[DEBUG] main: Config file path: %s", config_path)
 	if _, err := os.Stat(config_path); os.IsNotExist(err) {
 		// config.json が存在しない場合は作成する
+		log.Println("[DEBUG] main: Config file does not exist, creating...")
 		if _, err := os.Create(config_path); err != nil {
 			log.Fatalf("Failed to create config file: %v", err)
 		}
+	} else {
+		log.Println("[DEBUG] main: Config file exists")
 	}
+	log.Println("[DEBUG] main: Loading config file")
 	config, err := loadConfig(config_path)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 	log.Println("[INFO] Loaded config:", config.SnippingToolSavePath)
+	log.Printf("[DEBUG] main: Config loaded - Token: %s, Path: %s", 
+		len(config.GyazoAccessToken) > 0, config.SnippingToolSavePath)
 
+	log.Println("[DEBUG] main: Creating Gyazo client")
 	gyazoClient, err := newGyazoApiClient(config.GyazoAccessToken, config.SnippingToolSavePath)
 	if err != nil {
 		log.Fatalf("Failed to create Gyazo client: %v", err)
 	}
+	log.Println("[DEBUG] main: Gyazo client created successfully")
 
 	// gyazoClient.run() と runShortCutKeyService() を平行実行する
+	log.Println("[DEBUG] main: Starting Gyazo client in goroutine")
 	go func() {
+		log.Println("[DEBUG] main: Gyazo client goroutine started")
 		if err := gyazoClient.run(); err != nil {
 			log.Fatalf("Failed to run Gyazo client: %v", err)
 		}
+		log.Println("[DEBUG] main: Gyazo client goroutine ended")
 	}()
 
 	// シグナルを監視するゴルーチン
+	log.Println("[DEBUG] main: Starting signal handler goroutine")
 	go func() {
+		log.Println("[DEBUG] main: Signal handler goroutine started, waiting for signals...")
 		sig := <-sigChan
 		log.Printf("[INFO] Received signal: %v", sig)
 		log.Println("[INFO] Shutting down gracefully...")
 
 		// Gyazo client を停止
+		log.Println("[DEBUG] main: Stopping Gyazo client")
 		gyazoClient.stop()
+		log.Println("[DEBUG] main: Gyazo client stopped")
 
 		// ログファイルを確実にフラッシュして閉じる
 		if err := logRotator.Sync(); err != nil {
@@ -295,5 +318,7 @@ func main() {
 	}()
 
 	// このサービスで処理終了をブロックする
+	log.Println("[DEBUG] main: Starting shortcut key service (main thread)")
 	runShortCutKeyService()
+	log.Println("[DEBUG] main: Shortcut key service ended, exiting main")
 }

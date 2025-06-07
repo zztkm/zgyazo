@@ -47,14 +47,17 @@ const (
 )
 
 func runShortCutKeyService() {
+	log.Println("[DEBUG] runShortCutKeyService: Starting shortcut key service")
 	// ホットキーID（プログラム内でユニークであれば何でも良い）
 	const hotkeyID = 1
 
 	// 専用のメッセージウィンドウを作成
+	log.Println("[DEBUG] runShortCutKeyService: Creating message window")
 	hWnd := createMessageWindow()
 	if hWnd == 0 {
 		log.Fatalf("Failed to create message window")
 	}
+	log.Printf("[DEBUG] runShortCutKeyService: Message window created, hWnd=%x", hWnd)
 
 	// ホットキーを登録する
 	// RegisterHotKey(hWnd, id, fsModifiers, vk)
@@ -62,6 +65,7 @@ func runShortCutKeyService() {
 	// id:        ホットキーのID
 	// fsModifiers: 修飾キーの組み合わせ (Ctrl + Shift)
 	// vk:          仮想キーコード (C)
+	log.Println("[DEBUG] runShortCutKeyService: Registering hotkey")
 	ret, _, err := procRegisterHotKey.Call(
 		hWnd,                               // 専用ウィンドウのハンドル
 		uintptr(hotkeyID),                  // id
@@ -72,14 +76,20 @@ func runShortCutKeyService() {
 	if ret == 0 {
 		log.Fatalf("RegisterHotKey failed: %v", err)
 	}
+	log.Println("[DEBUG] runShortCutKeyService: Hotkey registered successfully")
 	log.Println("ホットキー(Ctrl + Shift + C)の監視を開始しました。")
 	log.Println("このウィンドウを閉じると監視は終了します。")
 
 	// プログラム終了時にホットキーを解除する
-	defer procUnregisterHotKey.Call(hWnd, uintptr(hotkeyID))
+	defer func() {
+		log.Println("[DEBUG] runShortCutKeyService: Unregistering hotkey")
+		procUnregisterHotKey.Call(hWnd, uintptr(hotkeyID))
+	}()
 
 	// 改善されたメッセージループを開始
+	log.Println("[DEBUG] runShortCutKeyService: Starting message loop")
 	runImprovedMessageLoop(hWnd, hotkeyID)
+	log.Println("[DEBUG] runShortCutKeyService: Message loop ended")
 }
 
 // 専用のメッセージウィンドウを作成
@@ -148,9 +158,15 @@ func runImprovedMessageLoop(hWnd uintptr, hotkeyID int) {
 	log.Printf("監視対象ウィンドウ: hWnd = %x", hWnd)
 
 	// GetMessageを使用したメッセージループ
+	iterCount := 0
 	for {
+		iterCount++
+		if iterCount%100 == 0 {
+			log.Printf("[DEBUG] Message loop iteration: %d", iterCount)
+		}
 		// GetMessageはメッセージが来るまでブロックする
 		// 戻り値: >0 = メッセージあり, 0 = WM_QUIT, -1 = エラー
+		log.Printf("[DEBUG] Calling GetMessage (iteration %d)", iterCount)
 		ret, _, err := procGetMessage.Call(
 			uintptr(unsafe.Pointer(&msg)),
 			hWnd,  // このウィンドウのメッセージのみを取得
@@ -163,6 +179,7 @@ func runImprovedMessageLoop(hWnd uintptr, hotkeyID int) {
 			log.Printf("[ERROR] GetMessage failed: %v", err)
 			continue
 		}
+		log.Printf("[DEBUG] GetMessage returned: %d", ret)
 
 		// WM_QUITメッセージを受信した場合
 		if ret == 0 {
@@ -170,23 +187,34 @@ func runImprovedMessageLoop(hWnd uintptr, hotkeyID int) {
 			break
 		}
 
-		log.Printf("Received message: %d, WParam: %d, from hWnd: %x\n", msg.Message, msg.WParam, msg.HWnd)
+		log.Printf("[DEBUG] Received message: Type=%d, WParam=%d, LParam=%d, from hWnd=%x, Time=%d", msg.Message, msg.WParam, msg.LParam, msg.HWnd, msg.Time)
 
 		if msg.Message == WM_HOTKEY {
+			log.Printf("[DEBUG] WM_HOTKEY received, hotkeyID=%d", msg.WParam)
 			// どのホットキーが押されたかIDで確認
 			if msg.WParam == uintptr(hotkeyID) {
+				log.Println("[DEBUG] Hotkey matched! Starting Snipping Tool")
 				log.Println("ホットキーが押されました。Snipping Toolを起動します。")
 				go openSnippingTool() // 非同期で実行してメッセージループをブロックしない
+			} else {
+				log.Printf("[DEBUG] Hotkey ID mismatch: expected=%d, got=%d", hotkeyID, msg.WParam)
 			}
+		} else {
+			log.Printf("[DEBUG] Non-hotkey message: %d", msg.Message)
 		}
 	}
 }
 
 func openSnippingTool() {
+	log.Println("[DEBUG] openSnippingTool: Starting")
 	// Snipping Toolを起動する
 	// NOTE: Windows 11 では動作チェックをした
 	// TODO: snippingtool 以外のアプリも起動できるようにしたい
-	if err := exec.Command("snippingtool.exe").Start(); err != nil {
-		log.Printf("Snipping Toolの起動に失敗しました: %v", err)
+	cmd := exec.Command("snippingtool.exe")
+	log.Printf("[DEBUG] openSnippingTool: Executing command: %s", cmd.String())
+	if err := cmd.Start(); err != nil {
+		log.Printf("[ERROR] Snipping Toolの起動に失敗しました: %v", err)
+	} else {
+		log.Println("[DEBUG] openSnippingTool: Command started successfully")
 	}
 }
