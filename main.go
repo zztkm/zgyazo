@@ -275,7 +275,7 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 	log.Println("[INFO] Loaded config:", config.SnippingToolSavePath)
-	log.Printf("[DEBUG] main: Config loaded - Token: %s, Path: %s", 
+	log.Printf("[DEBUG] main: Config loaded - Token: %s, Path: %s",
 		len(config.GyazoAccessToken) > 0, config.SnippingToolSavePath)
 
 	log.Println("[DEBUG] main: Creating Gyazo client")

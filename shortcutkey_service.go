@@ -169,9 +169,9 @@ func runImprovedMessageLoop(hWnd uintptr, hotkeyID int) {
 		log.Printf("[DEBUG] Calling GetMessage (iteration %d)", iterCount)
 		ret, _, err := procGetMessage.Call(
 			uintptr(unsafe.Pointer(&msg)),
-			hWnd,  // このウィンドウのメッセージのみを取得
-			0,     // wMsgFilterMin
-			0,     // wMsgFilterMax
+			hWnd, // このウィンドウのメッセージのみを取得
+			0,    // wMsgFilterMin
+			0,    // wMsgFilterMax
 		)
 
 		// エラーチェック
@@ -195,7 +195,7 @@ func runImprovedMessageLoop(hWnd uintptr, hotkeyID int) {
 			if msg.WParam == uintptr(hotkeyID) {
 				log.Println("[DEBUG] Hotkey matched! Starting Snipping Tool")
 				log.Println("ホットキーが押されました。Snipping Toolを起動します。")
-				go openSnippingTool() // 非同期で実行してメッセージループをブロックしない
+				openSnippingTool() // 同期実行に変更してテスト
 			} else {
 				log.Printf("[DEBUG] Hotkey ID mismatch: expected=%d, got=%d", hotkeyID, msg.WParam)
 			}
@@ -207,6 +207,12 @@ func runImprovedMessageLoop(hWnd uintptr, hotkeyID int) {
 
 func openSnippingTool() {
 	log.Println("[DEBUG] openSnippingTool: Starting")
+
+	// 既存のSnipping Toolプロセスをチェック
+	checkCmd := exec.Command("tasklist", "/FI", "IMAGENAME eq SnippingTool.exe")
+	checkOutput, _ := checkCmd.Output()
+	log.Printf("[DEBUG] openSnippingTool: Existing processes: %s", string(checkOutput))
+
 	// Snipping Toolを起動する
 	// NOTE: Windows 11 では動作チェックをした
 	// TODO: snippingtool 以外のアプリも起動できるようにしたい
@@ -216,5 +222,12 @@ func openSnippingTool() {
 		log.Printf("[ERROR] Snipping Toolの起動に失敗しました: %v", err)
 	} else {
 		log.Println("[DEBUG] openSnippingTool: Command started successfully")
+
+		// プロセスの完了を待機
+		if err := cmd.Wait(); err != nil {
+			log.Printf("[DEBUG] openSnippingTool: Process finished with error: %v", err)
+		} else {
+			log.Println("[DEBUG] openSnippingTool: Process finished successfully")
+		}
 	}
 }
